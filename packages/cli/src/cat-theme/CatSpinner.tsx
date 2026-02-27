@@ -19,40 +19,20 @@ const CAT_COLORS = [
   '#C77DFF', // lavender purple
 ];
 
-// Animated paw/cat frames — cycling ASCII cat poses
-const CAT_FRAMES = [
-  ' /\\_/\\ ',
-  '( o.o )',
-  ' > ♥ < ',
-  ' /\\_/\\ ',
-  '( ^.^ )',
-  ' > ♦ < ',
-  ' /\\_/\\ ',
-  '( -.^ )',
-  ' > ★ < ',
-];
-
-// Paw print spinner frames (used for inline spinner)
-const PAW_FRAMES = ['🐾', ' 🐾', '  🐾', '   🐾', '  🐾', ' 🐾'];
-
+// Braille dot frames (same as original dots spinner)
 const DOT_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
-const COLOR_CYCLE_DURATION_MS = 3000;
-const FRAME_INTERVAL_MS = 120;
+// One tick every 80ms → ~12.5fps. Color cycles over 50 ticks (~4s).
+const TICK_MS = 80;
+const COLOR_CYCLE_TICKS = 50;
 
 interface CatSpinnerProps {
-  /** 'paw' for paw print frames, 'dots' for braille dots, 'cat' for cat art */
-  variant?: 'paw' | 'dots' | 'cat';
   altText?: string;
 }
 
-export const CatSpinner: React.FC<CatSpinnerProps> = ({
-  variant = 'dots',
-  altText,
-}) => {
+export const CatSpinner: React.FC<CatSpinnerProps> = ({ altText }) => {
   const isScreenReaderEnabled = useIsScreenReaderEnabled();
-  const [time, setTime] = useState(0);
-  const [frame, setFrame] = useState(0);
+  const [tick, setTick] = useState(0);
 
   const catGradient = useMemo(
     () => tinygradient([...CAT_COLORS, CAT_COLORS[0]]),
@@ -61,43 +41,19 @@ export const CatSpinner: React.FC<CatSpinnerProps> = ({
 
   useEffect(() => {
     if (isScreenReaderEnabled) return;
-
-    const colorInterval = setInterval(() => {
-      setTime((t) => t + 30);
-    }, 30);
-
-    const frameInterval = setInterval(() => {
-      setFrame((f) => {
-        const frames =
-          variant === 'cat'
-            ? CAT_FRAMES
-            : variant === 'paw'
-              ? PAW_FRAMES
-              : DOT_FRAMES;
-        return (f + 1) % frames.length;
-      });
-    }, FRAME_INTERVAL_MS);
-
-    return () => {
-      clearInterval(colorInterval);
-      clearInterval(frameInterval);
-    };
-  }, [isScreenReaderEnabled, variant]);
+    const id = setInterval(() => {
+      setTick((t) => t + 1);
+    }, TICK_MS);
+    return () => clearInterval(id);
+  }, [isScreenReaderEnabled]);
 
   if (isScreenReaderEnabled) {
     return <Text>{altText ?? 'Loading...'}</Text>;
   }
 
-  const progress = (time % COLOR_CYCLE_DURATION_MS) / COLOR_CYCLE_DURATION_MS;
-  const currentColor = catGradient.rgbAt(progress).toHexString();
-
-  const frames =
-    variant === 'cat'
-      ? CAT_FRAMES
-      : variant === 'paw'
-        ? PAW_FRAMES
-        : DOT_FRAMES;
-  const currentFrame = frames[frame % frames.length];
+  const colorProgress = (tick % COLOR_CYCLE_TICKS) / COLOR_CYCLE_TICKS;
+  const currentColor = catGradient.rgbAt(colorProgress).toHexString();
+  const currentFrame = DOT_FRAMES[tick % DOT_FRAMES.length] ?? '⠋';
 
   return <Text color={currentColor}>{currentFrame}</Text>;
 };

@@ -19,8 +19,7 @@ const BAR_EMPTY = '░';
 const BAR_HEAD = '▓';
 const BAR_WIDTH = 16;
 
-// ── Paw trail animation ────────────────────────────────────────────────────
-// Each frame is a horizontal "trail" of paw prints walking across
+// ── Paw trail frames ───────────────────────────────────────────────────────
 const PAW_TRAIL_FRAMES = [
   '🐾· · · · · · · ·',
   '·🐾· · · · · · · ',
@@ -40,18 +39,20 @@ const PAW_TRAIL_FRAMES = [
   '·🐾· · · · · · · ',
 ];
 
-// ── Spinning cat ear ───────────────────────────────────────────────────────
+// ── Cat ear frames ─────────────────────────────────────────────────────────
 const CAT_EAR_FRAMES = ['/\\_/\\', '/\\_/\\', '/\\_^\\', '/^_/\\', '/\\_/\\'];
 
 // ── Thinking bubbles ───────────────────────────────────────────────────────
 const THINK_FRAMES = ['○', '◎', '●', '◎', '○'];
 
-const COLOR_CYCLE_MS = 2400;
-const FRAME_MS = 110;
-const BAR_SPEED_MS = 80;
+// Single tick rate — everything derived from one counter.
+// 120ms = ~8fps — smooth enough visually, low enough CPU.
+const TICK_MS = 120;
+
+// How many ticks per full color cycle
+const COLOR_CYCLE_TICKS = 40; // 40 * 120ms = 4.8s
 
 interface CatTaskProgressProps {
-  /** Optional label override (phrase from usePhraseCycler) */
   label?: string;
   elapsedTime?: number;
   showTimer?: boolean;
@@ -63,28 +64,19 @@ export const CatTaskProgress: React.FC<CatTaskProgressProps> = ({
   showTimer = true,
 }) => {
   const isScreenReader = useIsScreenReaderEnabled();
-  const [time, setTime] = useState(0);
-  const [frame, setFrame] = useState(0);
-  const [barOffset, setBarOffset] = useState(0);
+
+  // Single integer tick — all animation derived from this
+  const [tick, setTick] = useState(0);
 
   const warmGrad = useMemo(() => tinygradient([...WARM, WARM[0]]), []);
   const coolGrad = useMemo(() => tinygradient([...COOL, COOL[0]]), []);
 
   useEffect(() => {
     if (isScreenReader) return;
-
-    const colorTick = setInterval(() => setTime((t) => t + 30), 30);
-    const frameTick = setInterval(() => setFrame((f) => f + 1), FRAME_MS);
-    const barTick = setInterval(
-      () => setBarOffset((b) => (b + 1) % (BAR_WIDTH * 2)),
-      BAR_SPEED_MS,
-    );
-
-    return () => {
-      clearInterval(colorTick);
-      clearInterval(frameTick);
-      clearInterval(barTick);
-    };
+    const id = setInterval(() => {
+      setTick((t) => t + 1);
+    }, TICK_MS);
+    return () => clearInterval(id);
   }, [isScreenReader]);
 
   if (isScreenReader) {
@@ -96,36 +88,36 @@ export const CatTaskProgress: React.FC<CatTaskProgressProps> = ({
     );
   }
 
-  const progress = (time % COLOR_CYCLE_MS) / COLOR_CYCLE_MS;
-  const accentColor = warmGrad.rgbAt(progress).toHexString();
-  const accentColor2 = coolGrad.rgbAt(progress).toHexString();
+  // ── Derive everything from tick ──────────────────────────────────────────
+  const colorProgress = (tick % COLOR_CYCLE_TICKS) / COLOR_CYCLE_TICKS;
+  const accentColor = warmGrad.rgbAt(colorProgress).toHexString();
+  const accentColor2 = coolGrad.rgbAt(colorProgress).toHexString();
 
-  // Animated progress bar — bouncing fill
-  const buildBar = (): string => {
-    const pos = barOffset % (BAR_WIDTH * 2);
-    const actualPos = pos < BAR_WIDTH ? pos : BAR_WIDTH * 2 - pos;
-    const fill = Math.min(actualPos + 3, BAR_WIDTH);
-    const start = Math.max(actualPos - 1, 0);
-    let bar = '';
-    for (let i = 0; i < BAR_WIDTH; i++) {
-      if (i === fill - 1) bar += BAR_HEAD;
-      else if (i >= start && i < fill) bar += BAR_FILL;
-      else bar += BAR_EMPTY;
-    }
-    return bar;
-  };
+  const pawFrame = PAW_TRAIL_FRAMES[tick % PAW_TRAIL_FRAMES.length] ?? '🐾';
+  const thinkBubble = THINK_FRAMES[tick % THINK_FRAMES.length] ?? '○';
+  const catEar = CAT_EAR_FRAMES[tick % CAT_EAR_FRAMES.length] ?? '/\\_/\\';
 
-  const pawTrail = PAW_TRAIL_FRAMES[frame % PAW_TRAIL_FRAMES.length] ?? '🐾';
-  const thinkBubble = THINK_FRAMES[frame % THINK_FRAMES.length] ?? '○';
-  const catEar = CAT_EAR_FRAMES[frame % CAT_EAR_FRAMES.length] ?? '/\\_/\\';
+  // Bouncing progress bar: position oscillates 0→BAR_WIDTH→0
+  const barCycle = BAR_WIDTH * 2;
+  const barRaw = tick % barCycle;
+  const barPos = barRaw < BAR_WIDTH ? barRaw : barCycle - barRaw;
+  const barFill = Math.min(barPos + 3, BAR_WIDTH);
+  const barStart = Math.max(barPos - 1, 0);
+  let bar = '';
+  for (let i = 0; i < BAR_WIDTH; i++) {
+    if (i === barFill - 1) bar += BAR_HEAD;
+    else if (i >= barStart && i < barFill) bar += BAR_FILL;
+    else bar += BAR_EMPTY;
+  }
 
   // Timer display
-  const timerStr =
-    showTimer && elapsedTime !== undefined
-      ? elapsedTime < 60
+  let timerStr: string | null = null;
+  if (showTimer && elapsedTime !== undefined) {
+    timerStr =
+      elapsedTime < 60
         ? `${elapsedTime}s`
-        : `${Math.floor(elapsedTime / 60)}m ${elapsedTime % 60}s`
-      : null;
+        : `${Math.floor(elapsedTime / 60)}m ${elapsedTime % 60}s`;
+  }
 
   return (
     <Box flexDirection="column">
@@ -136,7 +128,7 @@ export const CatTaskProgress: React.FC<CatTaskProgressProps> = ({
           {thinkBubble}{' '}
         </Text>
         <Text color={accentColor} italic>
-          {label ?? 'Task in progress'}
+          {label ?? 'Task in progress…'}
           {'  '}
         </Text>
         {timerStr && (
@@ -148,10 +140,10 @@ export const CatTaskProgress: React.FC<CatTaskProgressProps> = ({
       {/* Row 2: animated progress bar + paw trail */}
       <Box flexDirection="row" alignItems="center">
         <Text color={accentColor}>[</Text>
-        <Text color={accentColor2}>{buildBar()}</Text>
+        <Text color={accentColor2}>{bar}</Text>
         <Text color={accentColor}>]</Text>
         <Text>{'  '}</Text>
-        <Text color={accentColor}>{pawTrail}</Text>
+        <Text color={accentColor}>{pawFrame}</Text>
       </Box>
     </Box>
   );
