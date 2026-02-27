@@ -4,6 +4,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+// cat-theme: iMessage-style right-aligned user bubble.
+// To revert: restore the original HalfLinePaddedBox layout below.
+
 import type React from 'react';
 import { useMemo } from 'react';
 import { Text, Box } from 'ink';
@@ -14,22 +17,20 @@ import {
   calculateTransformationsForLine,
   calculateTransformedLine,
 } from '../shared/text-buffer.js';
-import { HalfLinePaddedBox } from '../shared/HalfLinePaddedBox.js';
-import { useConfig } from '../../contexts/ConfigContext.js';
 
 interface UserMessageProps {
   text: string;
   width: number;
 }
 
-export const UserMessage: React.FC<UserMessageProps> = ({ text, width }) => {
-  const prefix = '> ';
-  const prefixWidth = prefix.length;
-  const isSlashCommand = checkIsSlashCommand(text);
-  const config = useConfig();
-  const useBackgroundColor = config.getUseBackgroundColor();
+// Max width a user bubble may occupy (fraction of terminal width)
+const BUBBLE_MAX_FRACTION = 0.72;
 
-  const textColor = isSlashCommand ? theme.text.accent : theme.text.secondary;
+export const UserMessage: React.FC<UserMessageProps> = ({ text, width }) => {
+  const isSlashCommand = checkIsSlashCommand(text);
+
+  // Slash commands use the original prefix style — no bubble
+  const suffix = isSlashCommand ? '' : ' >';
 
   const displayText = useMemo(() => {
     if (!text) return text;
@@ -37,10 +38,9 @@ export const UserMessage: React.FC<UserMessageProps> = ({ text, width }) => {
       .split('\n')
       .map((line) => {
         const transformations = calculateTransformationsForLine(line);
-        // We pass a cursor position of [-1, -1] so that no transformations are expanded (e.g. images remain collapsed)
         const { transformedLine } = calculateTransformedLine(
           line,
-          0, // line index doesn't matter since cursor is [-1, -1]
+          0,
           [-1, -1],
           transformations,
         );
@@ -49,34 +49,65 @@ export const UserMessage: React.FC<UserMessageProps> = ({ text, width }) => {
       .join('\n');
   }, [text]);
 
-  return (
-    <HalfLinePaddedBox
-      backgroundBaseColor={theme.background.message}
-      backgroundOpacity={1}
-      useBackgroundColor={useBackgroundColor}
-    >
-      <Box
-        flexDirection="row"
-        paddingY={0}
-        marginY={useBackgroundColor ? 0 : 1}
-        paddingX={useBackgroundColor ? 1 : 0}
-        alignSelf="flex-start"
-        width={width}
-      >
-        <Box width={prefixWidth} flexShrink={0}>
+  if (isSlashCommand) {
+    // Slash commands: keep original left-aligned style
+    return (
+      <Box flexDirection="row" marginY={1} width={width}>
+        <Box width={2} flexShrink={0}>
           <Text
             color={theme.text.accent}
             aria-label={SCREEN_READER_USER_PREFIX}
           >
-            {prefix}
+            {'> '}
           </Text>
         </Box>
         <Box flexGrow={1}>
-          <Text wrap="wrap" color={textColor}>
+          <Text wrap="wrap" color={theme.text.accent}>
             {displayText}
           </Text>
         </Box>
       </Box>
-    </HalfLinePaddedBox>
+    );
+  }
+
+  // cat-theme: iMessage right-aligned bubble
+  // The bubble sits on the right; a spacer fills the left.
+  const maxBubbleWidth = Math.max(Math.floor(width * BUBBLE_MAX_FRACTION), 20);
+
+  // Estimate the text width to size the bubble snugly.
+  // Use the longest line, capped at maxBubbleWidth.
+  const lines = displayText.split('\n');
+  const longestLine = lines.reduce(
+    (max, l) => (l.length > max ? l.length : max),
+    0,
+  );
+  // +4 for left/right padding (2 each) + suffix space
+  const bubbleWidth = Math.min(longestLine + 4, maxBubbleWidth);
+  const spacerWidth = Math.max(width - bubbleWidth, 0);
+
+  return (
+    <Box flexDirection="row" width={width} marginY={1} alignItems="flex-start">
+      {/* Left spacer pushes bubble to the right */}
+      {spacerWidth > 0 && <Box width={spacerWidth} flexShrink={0} />}
+
+      {/* Bubble */}
+      <Box
+        flexDirection="column"
+        borderStyle="round"
+        borderColor={theme.text.accent}
+        paddingX={1}
+        flexShrink={0}
+        width={bubbleWidth}
+      >
+        <Text
+          wrap="wrap"
+          color={theme.text.secondary}
+          aria-label={SCREEN_READER_USER_PREFIX}
+        >
+          {displayText}
+          {suffix && <Text color={theme.text.accent}>{suffix}</Text>}
+        </Text>
+      </Box>
+    </Box>
   );
 };
