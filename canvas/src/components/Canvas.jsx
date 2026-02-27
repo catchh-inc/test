@@ -102,6 +102,11 @@ export default function Canvas() {
         y: cy - (cy - vp.y) * zr,
       });
     };
+    return () => {
+      delete window.__canvas_fitPage;
+      delete window.__canvas_zoomIn;
+      delete window.__canvas_zoomOut;
+    };
   }, [fitPage, setViewport]);
 
   // ── Pan / Zoom event handlers ───────────────────────────────────────────────

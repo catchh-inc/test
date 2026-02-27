@@ -1,9 +1,13 @@
 /**
- * Zustand store — single source of truth for the entire app.
+ * Zustand store — single source of truth.
+ *
+ * Fixes applied:
+ *  - streamingPageId (null | pageId) replaces boolean streaming — tracks WHICH page streams
+ *  - addPage is a single atomic set() call
+ *  - activePageId initialised inline, no separate setState patch
  */
 import { create } from 'zustand';
 
-// ─── helpers ─────────────────────────────────────────────────────────────────
 let _pageIdCounter = 1;
 const newPageId = () => `page-${_pageIdCounter++}`;
 
@@ -52,10 +56,10 @@ export const DEFAULT_HTML = `<!DOCTYPE html>
 </head>
 <body>
   <h1>Hello, Canvas!</h1>
-  <p>This is your first HTML page on the infinite canvas. Click any element to select it, then use the chat to ask the AI to change it.</p>
+  <p>This is your first HTML page. Click any element to select it, then use the chat to ask the AI to modify it.</p>
   <div class="card">
     <h2>Getting Started</h2>
-    <p>Select one or more elements, describe what you want changed, and the AI will surgically apply a diff — no full rewrites.</p>
+    <p>Select one or more elements, describe what you want changed, and the AI will apply a surgical diff — not a full rewrite.</p>
     <button class="btn">Click me</button>
   </div>
 </body>
@@ -64,30 +68,30 @@ export const DEFAULT_HTML = `<!DOCTYPE html>
 function createPage(name, html) {
   return {
     id: newPageId(),
-    name: name ?? `Page 1`,
+    name: name ?? 'Page 1',
     html: html ?? DEFAULT_HTML,
   };
 }
 
-// ─── store ────────────────────────────────────────────────────────────────────
-export const useStore = create((set, get) => ({
-  // Pages
-  pages: [createPage()],
-  activePageId: null, // set after first page creation below
+// Build the first page synchronously so activePageId is never null
+const _firstPage = createPage();
 
-  // Viewport  { x, y, zoom }
+export const useStore = create((set, get) => ({
+  pages: [_firstPage],
+  activePageId: _firstPage.id,
+
+  // Viewport
   viewport: { x: 0, y: 0, zoom: 1 },
 
-  // Selected elements: SelectedElement[]
-  // SelectedElement: { selector, xpath, outerHTML, tagName, computedStyles }
+  // Selection
   selectedElements: [],
 
-  // Chat history per page  { [pageId]: ChatMessage[] }
-  // ChatMessage: { role: 'user'|'assistant', content, id }
-  chatHistory: {},
+  // Chat history  { [pageId]: Message[] }
+  // Message: { id, role: 'user'|'assistant', content }
+  chatHistory: { [_firstPage.id]: [] },
 
-  // Whether the LLM is streaming right now
-  streaming: false,
+  // null while idle, pageId while that page's LLM is streaming
+  streamingPageId: null,
 
   // LLM config
   llmConfig: {
@@ -97,30 +101,32 @@ export const useStore = create((set, get) => ({
     model: localStorage.getItem('canvas_model') ?? 'gpt-4o',
   },
 
-  // ── Page actions ────────────────────────────────────────────────────────────
+  // ── Page actions ───────────────────────────────────────────────────────────
   addPage: () => {
     const { pages } = get();
     const page = createPage(`Page ${pages.length + 1}`);
+    // Single atomic set — no window where chatHistory[page.id] is undefined
     set((s) => ({
       pages: [...s.pages, page],
+      activePageId: page.id,
       chatHistory: { ...s.chatHistory, [page.id]: [] },
+      selectedElements: [],
     }));
-    get().setActivePage(page.id);
     return page;
   },
 
   deletePage: (id) => {
     const { pages, activePageId } = get();
     if (pages.length === 1) return;
-    const next = pages.find((p) => p.id !== id);
+    const remaining = pages.filter((p) => p.id !== id);
     const newHistory = { ...get().chatHistory };
     delete newHistory[id];
-    set((s) => ({
-      pages: s.pages.filter((p) => p.id !== id),
+    set({
+      pages: remaining,
       chatHistory: newHistory,
-      activePageId: activePageId === id ? next.id : activePageId,
-      selectedElements: activePageId === id ? [] : s.selectedElements,
-    }));
+      activePageId: activePageId === id ? remaining[0].id : activePageId,
+      selectedElements: activePageId === id ? [] : get().selectedElements,
+    });
   },
 
   renamePage: (id, name) =>
@@ -135,13 +141,16 @@ export const useStore = create((set, get) => ({
       pages: s.pages.map((p) => (p.id === id ? { ...p, html } : p)),
     })),
 
-  // ── Selection ────────────────────────────────────────────────────────────────
+  // ── Selection ──────────────────────────────────────────────────────────────
   setSelection: (elements) => set({ selectedElements: elements }),
   clearSelection: () => set({ selectedElements: [] }),
 
-  // ── Chat ─────────────────────────────────────────────────────────────────────
+  // ── Chat ───────────────────────────────────────────────────────────────────
   pushMessage: (pageId, message) => {
-    const msg = { ...message, id: `msg-${Date.now()}-${Math.random()}` };
+    const msg = {
+      ...message,
+      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    };
     set((s) => ({
       chatHistory: {
         ...s.chatHistory,
@@ -163,13 +172,13 @@ export const useStore = create((set, get) => ({
       return { chatHistory: { ...s.chatHistory, [pageId]: history } };
     }),
 
-  setStreaming: (v) => set({ streaming: v }),
+  setStreamingPage: (pageId) => set({ streamingPageId: pageId }),
 
-  // ── Viewport ─────────────────────────────────────────────────────────────────
+  // ── Viewport ───────────────────────────────────────────────────────────────
   setViewport: (patch) =>
     set((s) => ({ viewport: { ...s.viewport, ...patch } })),
 
-  // ── LLM config ───────────────────────────────────────────────────────────────
+  // ── LLM config ─────────────────────────────────────────────────────────────
   setLlmConfig: (patch) => {
     const next = { ...get().llmConfig, ...patch };
     localStorage.setItem('canvas_api_key', next.apiKey);
@@ -177,10 +186,4 @@ export const useStore = create((set, get) => ({
     localStorage.setItem('canvas_model', next.model);
     set({ llmConfig: next });
   },
-}));
-
-// Initialise activePageId after store is created
-useStore.setState((s) => ({
-  activePageId: s.pages[0].id,
-  chatHistory: { [s.pages[0].id]: [] },
 }));

@@ -106,7 +106,7 @@ function PageItem({
           className="pages-item-name"
           title="Double-click to rename"
           onDoubleClick={(e) => {
-            e.stopPropagation();
+            // Don't stop propagation — let the li onClick (onActivate) fire first
             setDraft(page.name);
             setEditing(true);
           }}
