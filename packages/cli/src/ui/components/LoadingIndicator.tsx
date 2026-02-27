@@ -4,6 +4,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+// cat-theme: CatTaskProgress is injected here for beautiful "task in progress"
+// animations. The inline variant still uses the original GeminiRespondingSpinner.
+// To revert: remove the CatTaskProgress import and its usage below.
+
 import type { ThoughtSummary } from '@google/gemini-cli-core';
 import type React from 'react';
 import { Box, Text } from 'ink';
@@ -15,6 +19,7 @@ import { formatDuration } from '../utils/formatters.js';
 import { useTerminalSize } from '../hooks/useTerminalSize.js';
 import { isNarrowWidth } from '../utils/isNarrowWidth.js';
 import { INTERACTIVE_SHELL_WAITING_PHRASE } from '../hooks/usePhraseCycler.js';
+import { CatTaskProgress } from '../../cat-theme/CatTaskProgress.js';
 
 interface LoadingIndicatorProps {
   currentLoadingPhrase?: string;
@@ -94,43 +99,39 @@ export const LoadingIndicator: React.FC<LoadingIndicatorProps> = ({
     );
   }
 
+  // cat-theme: Use beautiful CatTaskProgress for the block (non-inline) display.
+  // The inline variant is kept as-is since it is used inside message rows.
+  const isResponding = streamingState === StreamingState.Responding;
+  const isWaitingConfirm =
+    streamingState === StreamingState.WaitingForConfirmation;
+
   return (
     <Box paddingLeft={0} flexDirection="column">
-      {/* Main loading line */}
-      <Box
-        width="100%"
-        flexDirection={isNarrow ? 'column' : 'row'}
-        alignItems={isNarrow ? 'flex-start' : 'center'}
-      >
-        <Box>
-          <Box marginRight={1}>
-            <GeminiRespondingSpinner
-              nonRespondingDisplay={
-                streamingState === StreamingState.WaitingForConfirmation
-                  ? '⠏'
-                  : ''
+      {/* cat-theme: animated task-in-progress display */}
+      {(isResponding || isWaitingConfirm || primaryText) && (
+        <Box
+          width="100%"
+          flexDirection={isNarrow ? 'column' : 'row'}
+          alignItems={isNarrow ? 'flex-start' : 'center'}
+        >
+          <Box flexDirection="column" flexGrow={1}>
+            <CatTaskProgress
+              label={
+                isWaitingConfirm
+                  ? 'Waiting for your confirmation…'
+                  : thinkingIndicator + (primaryText ?? 'Task in progress…')
               }
+              elapsedTime={
+                showCancelAndTimer &&
+                !isWaitingConfirm &&
+                typeof elapsedTime === 'number'
+                  ? elapsedTime
+                  : undefined
+              }
+              showTimer={showCancelAndTimer && !isWaitingConfirm}
             />
           </Box>
-          {primaryText && (
-            <Text color={theme.text.primary} italic wrap="truncate-end">
-              {thinkingIndicator}
-              {primaryText}
-            </Text>
-          )}
-          {!isNarrow && cancelAndTimerContent && (
-            <>
-              <Box flexShrink={0} width={1} />
-              <Text color={theme.text.secondary}>{cancelAndTimerContent}</Text>
-            </>
-          )}
-        </Box>
-        {!isNarrow && <Box flexGrow={1}>{/* Spacer */}</Box>}
-        {!isNarrow && rightContent && <Box>{rightContent}</Box>}
-      </Box>
-      {isNarrow && cancelAndTimerContent && (
-        <Box>
-          <Text color={theme.text.secondary}>{cancelAndTimerContent}</Text>
+          {!isNarrow && rightContent && <Box>{rightContent}</Box>}
         </Box>
       )}
       {isNarrow && rightContent && <Box>{rightContent}</Box>}

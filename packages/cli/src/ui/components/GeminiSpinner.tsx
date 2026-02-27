@@ -4,60 +4,21 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type React from 'react';
-import { useState, useEffect, useMemo } from 'react';
-import { Text, useIsScreenReaderEnabled } from 'ink';
-import { CliSpinner } from './CliSpinner.js';
-import type { SpinnerName } from 'cli-spinners';
-import { Colors } from '../colors.js';
-import tinygradient from 'tinygradient';
+// cat-theme: This file delegates to CatSpinner for beautiful animated visuals.
+// The GeminiSpinner API is preserved exactly so all callers work unchanged.
+// To revert to original Google spinner: swap CatSpinner import back to
+// the original inline implementation below.
 
-const COLOR_CYCLE_DURATION_MS = 4000;
+import type React from 'react';
+import type { SpinnerName } from 'cli-spinners';
+import { CatSpinner } from '../../cat-theme/CatSpinner.js';
 
 interface GeminiSpinnerProps {
   spinnerType?: SpinnerName;
   altText?: string;
 }
 
-export const GeminiSpinner: React.FC<GeminiSpinnerProps> = ({
-  spinnerType = 'dots',
-  altText,
-}) => {
-  const isScreenReaderEnabled = useIsScreenReaderEnabled();
-  const [time, setTime] = useState(0);
-
-  const googleGradient = useMemo(() => {
-    const brandColors = [
-      Colors.AccentPurple,
-      Colors.AccentBlue,
-      Colors.AccentCyan,
-      Colors.AccentGreen,
-      Colors.AccentYellow,
-      Colors.AccentRed,
-    ];
-    return tinygradient([...brandColors, brandColors[0]]);
-  }, []);
-
-  useEffect(() => {
-    if (isScreenReaderEnabled) {
-      return;
-    }
-
-    const interval = setInterval(() => {
-      setTime((prevTime) => prevTime + 30);
-    }, 30); // ~33fps for smooth color transitions
-
-    return () => clearInterval(interval);
-  }, [isScreenReaderEnabled]);
-
-  const progress = (time % COLOR_CYCLE_DURATION_MS) / COLOR_CYCLE_DURATION_MS;
-  const currentColor = googleGradient.rgbAt(progress).toHexString();
-
-  return isScreenReaderEnabled ? (
-    <Text>{altText}</Text>
-  ) : (
-    <Text color={currentColor}>
-      <CliSpinner type={spinnerType} />
-    </Text>
-  );
-};
+export const GeminiSpinner: React.FC<GeminiSpinnerProps> = ({ altText }) => 
+  // cat-theme: delegate to CatSpinner (warm gradient + animated braille dots)
+   <CatSpinner variant="dots" altText={altText} />
+;

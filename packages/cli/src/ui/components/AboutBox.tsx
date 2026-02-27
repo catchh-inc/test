@@ -46,9 +46,10 @@ export const AboutBox: React.FC<AboutBoxProps> = ({
       marginY={1}
       width="100%"
     >
+      {/* cat-theme: "Cat CLI" branding */}
       <Box marginBottom={1}>
         <Text bold color={theme.text.accent}>
-          About Gemini CLI
+          About Cat CLI 🐾
         </Text>
       </Box>
       <Box flexDirection="row">
@@ -114,10 +115,11 @@ export const AboutBox: React.FC<AboutBoxProps> = ({
           </Box>
           <Box>
             <Text color={theme.text.primary}>
+              {/* cat-theme: auth display */}
               {selectedAuthType.startsWith('oauth')
                 ? userEmail
-                  ? `Logged in with Google (${userEmail})`
-                  : 'Logged in with Google'
+                  ? `Logged in (${userEmail})`
+                  : 'Logged in'
                 : selectedAuthType}
             </Text>
           </Box>
